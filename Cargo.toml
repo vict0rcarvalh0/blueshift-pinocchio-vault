@@ -1,0 +1,22 @@
+[package]
+name = "blueshift-pinocchio-vault"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+pinocchio = "0.1.0"
+pinocchio-system = "0.1.0"
+solana-program = "1.17"
+
+[dev-dependencies]
+solana-program-test = "1.17"
+solana-sdk = "1.17"
+
+[profile.release]
+overflow-checks = true 
