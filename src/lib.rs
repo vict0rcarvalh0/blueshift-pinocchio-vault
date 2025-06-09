@@ -4,18 +4,17 @@ use pinocchio::{
     account_info::AccountInfo,
     entrypoint,
     entrypoint::ProgramResult,
-    nostd_panic_handler,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
 
+#[cfg(not(feature = "no-entrypoint"))]
 entrypoint!(process_instruction);
-nostd_panic_handler!();
 
 pub mod instructions;
 pub use instructions::*;
 
-// Program ID (you should replace this with your actual program ID)
+// Program ID
 pub const ID: Pubkey = [
     0x0f, 0x1e, 0x6b, 0x14, 0x21, 0xc0, 0x4a, 0x07,
     0x04, 0x31, 0x26, 0x5c, 0x19, 0xc5, 0xbb, 0xee,
@@ -33,4 +32,4 @@ fn process_instruction(
         Some((Withdraw::DISCRIMINATOR, _)) => Withdraw::try_from(accounts)?.process(),
         _ => Err(ProgramError::InvalidInstructionData),
     }
-} 
+}

@@ -5,7 +5,6 @@ use pinocchio::{
     program_error::ProgramError,
     pubkey::find_program_address,
 };
-use pinocchio_system::instructions::Transfer;
 
 pub struct DepositAccounts<'a> {
     pub owner: &'a AccountInfo,
@@ -22,20 +21,20 @@ impl<'a> TryFrom<&'a [AccountInfo]> for DepositAccounts<'a> {
 
         // Accounts Checks
         if !owner.is_signer() {
-            return Err(ProgramError::InvalidAccountOwner);
+            return Err(ProgramError::MissingRequiredSignature);
         }
 
-        if !vault.is_owned_by(&pinocchio_system::ID) {
-            return Err(ProgramError::InvalidAccountOwner);
+        if vault.owner() != &pinocchio_system::ID {
+            return Err(ProgramError::IncorrectProgramId);
         }
 
-        if vault.lamports().ne(&0) {
+        if *vault.try_borrow_lamports()? == 0 {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let (vault_key, _) = find_program_address(&[b"vault", owner.key()], &crate::ID);
-        if vault.key().ne(&vault_key) {
-            return Err(ProgramError::InvalidAccountOwner);
+        let (vault_key, _) = find_program_address(&[b"vault", owner.key().as_ref()], &crate::ID);
+        if vault.key() != &vault_key {
+            return Err(ProgramError::InvalidAccountData);
         }
 
         Ok(Self { owner, vault })
@@ -56,7 +55,7 @@ impl<'a> TryFrom<&'a [u8]> for DepositInstructionData {
 
         let amount = u64::from_le_bytes(data.try_into().unwrap());
 
-        if amount.eq(&0) {
+        if amount == 0 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -86,14 +85,10 @@ impl<'a> TryFrom<(&'a [u8], &'a [AccountInfo])> for Deposit<'a> {
 impl<'a> Deposit<'a> {
     pub const DISCRIMINATOR: &'a u8 = &0;
 
-    pub fn process(&mut self) -> ProgramResult {
-        Transfer {
-            from: self.accounts.owner,
-            to: self.accounts.vault,
-            lamports: self.instruction_datas.amount,
-        }
-        .invoke()?;
-
+    pub fn process(&self) -> ProgramResult {
+        let amount = self.instruction_datas.amount;
+        *self.accounts.owner.try_borrow_mut_lamports()? -= amount;
+        *self.accounts.vault.try_borrow_mut_lamports()? += amount;
         Ok(())
     }
-} 
+}

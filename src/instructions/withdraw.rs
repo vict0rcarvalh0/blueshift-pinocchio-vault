@@ -3,14 +3,12 @@ use pinocchio::{
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::find_program_address,
-    instruction::{Seed, Signer},
 };
-use pinocchio_system::instructions::Transfer;
 
 pub struct WithdrawAccounts<'a> {
     pub owner: &'a AccountInfo,
     pub vault: &'a AccountInfo,
-    pub bumps: [u8; 1],
+    pub bump: u8,
 }
 
 impl<'a> TryFrom<&'a [AccountInfo]> for WithdrawAccounts<'a> {
@@ -23,22 +21,22 @@ impl<'a> TryFrom<&'a [AccountInfo]> for WithdrawAccounts<'a> {
 
         // Basic Accounts Checks
         if !owner.is_signer() {
-            return Err(ProgramError::InvalidAccountOwner);
+            return Err(ProgramError::MissingRequiredSignature);
         }
 
-        if !vault.is_owned_by(&pinocchio_system::ID) {
-            return Err(ProgramError::InvalidAccountOwner);
+        if vault.owner() != &pinocchio_system::ID {
+            return Err(ProgramError::IncorrectProgramId);
         }
 
         let (vault_key, bump) = find_program_address(&[b"vault", owner.key().as_ref()], &crate::ID);
-        if &vault_key != vault.key() {
-            return Err(ProgramError::InvalidAccountOwner);
+        if vault.key() != &vault_key {
+            return Err(ProgramError::InvalidAccountData);
         }
 
         Ok(Self {
             owner,
             vault,
-            bumps: [bump],
+            bump,
         })
     }
 }
@@ -52,7 +50,6 @@ impl<'a> TryFrom<&'a [AccountInfo]> for Withdraw<'a> {
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
         let accounts = WithdrawAccounts::try_from(accounts)?;
-
         Ok(Self { accounts })
     }
 }
@@ -60,22 +57,10 @@ impl<'a> TryFrom<&'a [AccountInfo]> for Withdraw<'a> {
 impl<'a> Withdraw<'a> {
     pub const DISCRIMINATOR: &'a u8 = &1;
 
-    pub fn process(&mut self) -> ProgramResult {
-        // Create signer seeds for our CPI
-        let seeds = [
-            Seed::from(b"vault"),
-            Seed::from(self.accounts.owner.key().as_ref()),
-            Seed::from(&self.accounts.bumps),
-        ];
-        let signers = [Signer::from(&seeds)];
-
-        Transfer {
-            from: self.accounts.vault,
-            to: self.accounts.owner,
-            lamports: self.accounts.vault.lamports(),
-        }
-        .invoke_signed(&signers)?;
-
+    pub fn process(&self) -> ProgramResult {
+        let lamports = *self.accounts.vault.try_borrow_lamports()?;
+        *self.accounts.vault.try_borrow_mut_lamports()? = 0;
+        *self.accounts.owner.try_borrow_mut_lamports()? += lamports;
         Ok(())
     }
-} 
+}
